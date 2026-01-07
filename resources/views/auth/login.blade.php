@@ -68,14 +68,21 @@
                            required>
                 </div>
 
-                <div class="flex items-center">
-                    <input type="checkbox" 
-                           id="remember" 
-                           name="remember"
-                           class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
-                    <label for="remember" class="ml-2 text-sm text-gray-600">
-                        Remember me
-                    </label>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <input type="checkbox" 
+                               id="remember" 
+                               name="remember"
+                               class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label for="remember" class="ml-2 text-sm text-gray-600">
+                            Remember me
+                        </label>
+                    </div>
+                    <div>
+                        <a href="{{ route('password.request') }}" class="text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
+                            Lupa password?
+                        </a>
+                    </div>
                 </div>
 
                 <button type="submit" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold py-3 px-4 rounded-xl hover:shadow-lg hover:-translate-y-0.5 transform transition-all duration-200">

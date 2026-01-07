@@ -8,6 +8,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
@@ -155,5 +158,128 @@ class AuthController extends Controller
         } else {
             return redirect()->route('employee.dashboard');
         }
+    }
+
+    /**
+     * Show forgot password form.
+     */
+    public function showForgotPasswordForm()
+    {
+        return view('auth.forgot-password');
+    }
+
+    /**
+     * Handle forgot password request - send reset link.
+     */
+    public function sendResetLink(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email|exists:users,email',
+        ], [
+            'email.required' => 'Email harus diisi.',
+            'email.email' => 'Format email tidak valid.',
+            'email.exists' => 'Email tidak ditemukan dalam sistem.',
+        ]);
+
+        // Create a token
+        $token = Str::random(64);
+
+        // Store the token in the database
+        DB::table('password_reset_tokens')->updateOrInsert(
+            ['email' => $request->email],
+            [
+                'email' => $request->email,
+                'token' => Hash::make($token),
+                'created_at' => now(),
+            ]
+        );
+
+        // Get the user
+        $user = User::where('email', $request->email)->first();
+
+        // Send reset link via notification
+        $resetUrl = route('password.reset', ['token' => $token, 'email' => $request->email]);
+        
+        try {
+            $user->notify(new \App\Notifications\ResetPasswordNotification($resetUrl, $token));
+            
+            return back()->with('success', 'Link reset password telah dikirim ke email Anda!');
+        } catch (\Exception $e) {
+            // If email fails, still show success (for security reasons)
+            // But log the error for debugging
+            \Log::error('Failed to send reset email: ' . $e->getMessage());
+            
+            return back()->with('success', 'Link reset password telah dikirim ke email Anda!');
+        }
+    }
+
+    /**
+     * Show reset password form.
+     */
+    public function showResetPasswordForm(Request $request, $token)
+    {
+        return view('auth.reset-password', [
+            'token' => $token,
+            'email' => $request->email
+        ]);
+    }
+
+    /**
+     * Handle reset password request.
+     */
+    public function resetPassword(Request $request)
+    {
+        $request->validate([
+            'token' => 'required',
+            'email' => 'required|email|exists:users,email',
+            'password' => 'required|string|min:8|confirmed',
+        ], [
+            'email.required' => 'Email harus diisi.',
+            'email.email' => 'Format email tidak valid.',
+            'email.exists' => 'Email tidak ditemukan dalam sistem.',
+            'password.required' => 'Password harus diisi.',
+            'password.min' => 'Password minimal 8 karakter.',
+            'password.confirmed' => 'Konfirmasi password tidak cocok.',
+        ]);
+
+        // Check if token exists and is valid (not expired - 60 minutes)
+        $passwordReset = DB::table('password_reset_tokens')
+            ->where('email', $request->email)
+            ->first();
+
+        if (!$passwordReset) {
+            return back()->withErrors(['email' => 'Token reset password tidak valid.']);
+        }
+
+        // Check if token matches
+        if (!Hash::check($request->token, $passwordReset->token)) {
+            return back()->withErrors(['email' => 'Token reset password tidak valid.']);
+        }
+
+        // Check if token is expired (60 minutes)
+        if (now()->diffInMinutes($passwordReset->created_at) > 60) {
+            return back()->withErrors(['email' => 'Token reset password telah kadaluarsa. Silakan minta token baru.']);
+        }
+
+        // Update the user's password
+        $user = User::where('email', $request->email)->first();
+        $user->password = Hash::make($request->password);
+        $user->save();
+
+        // Delete the token
+        DB::table('password_reset_tokens')
+            ->where('email', $request->email)
+            ->delete();
+
+        // Log activity
+        \App\Models\ActivityLog::createLog(
+            'password_reset',
+            'User',
+            $user->id,
+            $user->name . ' berhasil reset password'
+        );
+
+        return redirect()->route('login')
+            ->with('success', 'Password berhasil direset! Silakan login dengan password baru Anda.');
     }
 }
